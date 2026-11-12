@@ -272,7 +272,8 @@ hr{border:none;border-top:1px solid var(--border);margin:28px 0;}
 
 .search-banner{padding:8px 14px;border-bottom:1px solid var(--border);background:var(--surface2);font-size:.78rem;color:var(--subtle);display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 .pv-att{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.78rem;color:var(--subtle);}
-.att-chip{border:1px solid var(--border);background:var(--surface2);border-radius:7px;padding:2px 9px;color:var(--text);overflow-wrap:anywhere;}
+.att-chip{border:1px solid var(--border);background:var(--surface2);border-radius:7px;padding:3px 10px;color:var(--text);overflow-wrap:anywhere;cursor:pointer;font-size:.78rem;text-align:left;}
+.att-chip:hover{border-color:var(--accent-ink);}
 .att-chip i{font-style:normal;color:var(--muted);font-size:.72rem;}
 </style>
 <script>try{var _t=localStorage.getItem("finmail.theme");if(_t)document.documentElement.setAttribute("data-theme",_t);}catch(e){}</script>
@@ -947,13 +948,13 @@ function fillAttachments(id) {
   const list = attCache[id];
   el.innerHTML = list === null ? "📎 Could not list attachments"
     : !list.length ? "📎 Only embedded images (no file attachments)"
-    : "📎 " + list.map(a => `<span class="att-chip">${esc(a.name)} <i>${fmtSize(a.size || 0)}</i></span>`).join("");
+    : "📎 " + list.map(a => `<button class="att-chip" data-att="${esc(a.id)}" data-name="${esc(a.name)}" title="Download ${esc(a.name)}">${esc(a.name)} <i>${fmtSize(a.size || 0)} ⬇</i></button>`).join("");
 }
 async function loadAttachments(id) {
   if (attCache[id] === undefined) {
     try {
       const token = await getToken();
-      const res = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${id}/attachments?$select=name,size,isInline`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${id}/attachments?$select=id,name,size,isInline`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error(String(res.status));
       attCache[id] = ((await res.json()).value || []).filter(a => !a.isInline);
     } catch (err) { attCache[id] = null; }
@@ -979,7 +980,24 @@ async function selectEmail(id) {
     fillBody(id, "Could not load the full email (" + err.message + "). Showing the preview instead.\n\n" + (e.bodyPreview || ""));
   }
 }
+async function downloadAttachment(msgId, attId, name) {
+  try {
+    showToast("Downloading " + name + "...", "⬇️");
+    const token = await getToken();
+    const res = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${msgId}/attachments/${attId}/$value`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error("Outlook returned " + res.status);
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    showToast("Could not download it here (" + err.message + "). Try Open in Outlook.", "⚠️");
+  }
+}
 function previewClick(evt) {
+  const att = evt.target.closest("[data-att]");
+  if (att && selectedId) { downloadAttachment(selectedId, att.dataset.att, att.dataset.name); return; }
   const b = evt.target.closest("[data-pv]");
   if (!b || !selectedId) return;
   const e = emailStore[selectedId];
