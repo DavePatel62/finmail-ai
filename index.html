@@ -14,7 +14,7 @@
   script-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   style-src  'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com;
   font-src   https://fonts.gstatic.com;
-  connect-src https://login.microsoftonline.com https://graph.microsoft.com https://login.microsoft.com;
+  connect-src 'self' https://login.microsoftonline.com https://graph.microsoft.com https://login.microsoft.com;
   img-src    'self' data: https:;
   frame-ancestors 'none';
 ">
@@ -311,6 +311,12 @@ hr{border:none;border-top:1px solid var(--border);margin:28px 0;}
   body.printing-digest .modal-body{max-height:none !important;overflow:visible !important;padding:0;}
   body.printing-digest .dg-doc{padding:0;}
 }
+
+/* AI + Teams */
+.pv-ai{margin-top:8px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface2);font-size:.82rem;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;}
+.pv-ai-t{white-space:pre-wrap;flex:1 1 100%;color:var(--text);line-height:1.45;}
+.pv-ai-n{font-size:.74rem;color:var(--muted);align-self:center;}
+.tms-err{color:var(--red);font-size:.8rem;margin-top:4px;}
 </style>
 <script>try{var _t=localStorage.getItem("finmail.theme");if(_t)document.documentElement.setAttribute("data-theme",_t);}catch(e){}</script>
 <script>/* MSAL 2.38.0 — Embedded locally, no CDN required */
@@ -503,6 +509,10 @@ var st,ct,ut,lt,dt,ht,pt,gt,ft,mt=function(){function t(e,t,r){this.networkInter
         <div class="modal-label">Subject</div>
         <input class="modal-input" id="draftSubject" readonly>
       </div>
+      <div class="modal-field" id="aiDraftField" hidden>
+        <div class="modal-label">✨ Tell the AI what to say (optional). It sends this email's text and your note to Claude.</div>
+        <input class="modal-input" id="aiInstr" placeholder="e.g. approve it, ask for the backup, tell them I will pay Friday">
+      </div>
       <div class="modal-field">
         <div class="modal-label">Your reply</div>
         <textarea class="modal-textarea" id="draftBody"></textarea>
@@ -511,6 +521,7 @@ var st,ct,ut,lt,dt,ht,pt,gt,ft,mt=function(){function t(e,t,r){this.networkInter
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
       <button class="btn btn-ghost" onclick="copyDraft()">📋 Copy</button>
+      <button class="btn btn-ghost" id="aiDraftBtn" hidden>✨ Write with AI</button>
       <button class="btn btn-ghost" id="regenBtn" onclick="regenerateDraft()">↻ Regenerate</button>
       <button class="btn btn-primary" onclick="openOutlookDraft()">Open in Outlook</button>
     </div>
@@ -545,6 +556,26 @@ var st,ct,ut,lt,dt,ht,pt,gt,ft,mt=function(){function t(e,t,r){this.networkInter
       <button class="btn btn-ghost" id="dgCopy">📋 Copy</button>
       <button class="btn btn-ghost" id="dgMail">✉️ Email to myself</button>
       <button class="btn btn-primary" id="dgPrint">🖨 Print / Save as PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- TEAMS MODAL -->
+<div class="modal-overlay" id="teamsModal">
+  <div class="modal" role="dialog" aria-labelledby="tmsTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="tmsTitle">💬 Share to a Teams channel</div>
+      <button class="modal-close" id="tmsClose" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-field"><div class="modal-label">Team</div><select class="modal-input" id="tmsTeam"></select></div>
+      <div class="modal-field"><div class="modal-label">Channel</div><select class="modal-input" id="tmsChan"></select></div>
+      <div class="modal-field"><div class="modal-label">Message (edit it if you like). Everyone in the channel will see exactly this.</div><textarea class="modal-textarea" id="tmsMsg"></textarea></div>
+      <div class="tms-err" id="tmsErr" hidden></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="tmsCancel">Cancel</button>
+      <button class="btn btn-primary" id="tmsPost" disabled>Post to channel</button>
     </div>
   </div>
 </div>
@@ -1071,6 +1102,7 @@ function renderPreview(e) {
       <div class="pv-actions">
         <button class="btn btn-primary" data-pv="draft">✍️ Draft reply</button>
         <button class="btn btn-ghost" data-pv="done" id="pvDoneBtn">${isDone ? "↩ Undo done" : "✅ Mark done"}</button>
+        <button class="btn btn-ghost" data-pv="teams">💬 Share to Teams</button>
         <button class="btn btn-ghost" data-pv="pin" id="pvPinBtn">${pins.has(e.id) ? "📌 Unpin" : "📌 Pin"}</button>
         ${isSnoozed(e.id)
           ? '<button class="btn btn-ghost" data-pv="wake">⏰ Wake now</button>'
@@ -1085,6 +1117,7 @@ function renderPreview(e) {
         <button class="link-btn" data-snooze="mon">Monday 8 AM</button>
       </div>
       <div class="pv-note">${esc(e.summary)}</div>
+      ${aiBoxHtml(e)}
       <div class="pv-why">Sorted into <b>${esc(catLabel(e.cat))}</b> because ${esc(e.why || "")}. <button class="link-btn" data-pv="fix">Sort differently…</button></div>
       ${e.hasAttachments ? '<div class="pv-att" id="pvAtt">📎 Checking attachments...</div>' : ""}
     </div>
@@ -1192,6 +1225,8 @@ function previewClick(evt) {
   if (b.dataset.pv === "draft") openDraft(e);
   else if (b.dataset.pv === "done") toggleDone(selectedId);
   else if (b.dataset.pv === "fix") openTabsModal();
+  else if (b.dataset.pv === "ai") runAiSummary(e);
+  else if (b.dataset.pv === "teams") openTeams(e);
   else if (b.dataset.pv === "pin") togglePin(selectedId);
   else if (b.dataset.pv === "wake") wakeEmail(selectedId);
   else if (b.dataset.pv === "snooze") { const m = byId("pvSnooze"); m.hidden = !m.hidden; b.setAttribute("aria-expanded", String(!m.hidden)); }
@@ -1260,7 +1295,7 @@ function wireUI() {
     if (e.target.closest("#customizeBtn")) openTabsModal();
   });
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") { closeModal(); closeTabsModal(); closeDigest(); toggleThemeMenu(false); return; }
+    if (e.key === "Escape") { closeModal(); closeTabsModal(); closeDigest(); closeTeams(); toggleThemeMenu(false); return; }
     if ((e.key === "ArrowDown" || e.key === "ArrowUp") && byId("dashboard").style.display !== "none" &&
         !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) &&
         !document.querySelector(".modal-overlay.open")) {
@@ -1276,6 +1311,12 @@ function wireUI() {
   byId("countSel").value = String(emailCount);
   renderPreview(null);
   byId("digestBtn").addEventListener("click", openDigest);
+  byId("aiDraftBtn").addEventListener("click", aiDraft);
+  byId("tmsTeam").addEventListener("change", () => loadChannels(byId("tmsTeam").value));
+  byId("tmsCancel").addEventListener("click", closeTeams);
+  byId("tmsClose").addEventListener("click", closeTeams);
+  byId("tmsPost").addEventListener("click", postToTeams);
+  detectAI();
   byId("dgClose").addEventListener("click", closeDigest);
   byId("dgPeriod").addEventListener("change", renderDigest);
   byId("dgHideDone").addEventListener("change", renderDigest);
@@ -1351,6 +1392,131 @@ function mailDigest() {
   if (cut) showToast("Email is shortened. Use Copy for the full digest.", "ℹ️");
 }
 
+
+// ── AI (turns on only when the local helper program is running with a key) ──
+let aiInfo = { ok: false, model: "" };
+let aiCache = {};
+async function detectAI() {
+  if (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;   // the public GitHub copy has no helper
+  try {
+    const r = await fetch("/api/status", { headers: { "X-FinMail": "1" } });
+    if (r.ok) { const j = await r.json(); aiInfo = { ok: !!j.ai, model: j.model || "" }; }
+  } catch (e) {}
+  try { aiCache = JSON.parse(lsGet(userKey("ai")) || "{}") || {}; } catch (e) { aiCache = {}; }
+  if (selectedId && emailStore[selectedId]) { const box = byId("pvAi"); if (box) box.outerHTML = aiBoxHtml(emailStore[selectedId]); }
+}
+async function aiCall(payload) {
+  const r = await fetch("/api/ai", { method: "POST", headers: { "Content-Type": "application/json", "X-FinMail": "1" }, body: JSON.stringify(payload) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ("The AI helper returned " + r.status));
+  return j.text;
+}
+function aiBoxHtml(e) {
+  if (!aiInfo.ok) return "";
+  const c = aiCache[e.id];
+  if (c) return `<div class="pv-ai" id="pvAi"><b>✨ AI summary</b><div class="pv-ai-t">${esc(c.t)}</div><button class="link-btn" data-pv="ai">Redo</button></div>`;
+  return `<div class="pv-ai" id="pvAi"><button class="btn btn-ghost" data-pv="ai">✨ AI summary</button><span class="pv-ai-n">Sends this email's text to Claude.</span></div>`;
+}
+async function runAiSummary(e) {
+  const box = byId("pvAi"); if (!box) return;
+  box.innerHTML = '<span class="pv-ai-n">✨ Reading the email...</span>';
+  try {
+    const text = await aiCall({ task: "summary", from: senderText(e), subject: e.subject || "", body: e.fullBody || e.bodyPreview || "" });
+    aiCache[e.id] = { t: text, ts: Date.now() };
+    const keys = Object.keys(aiCache).sort((a, b) => aiCache[a].ts - aiCache[b].ts);
+    while (keys.length > 100) delete aiCache[keys.shift()];
+    lsSet(userKey("ai"), JSON.stringify(aiCache));
+  } catch (err) { showToast(err.message, "⚠️"); }
+  if (selectedId === e.id && byId("pvAi")) byId("pvAi").outerHTML = aiBoxHtml(e);
+}
+function syncAiDraftUi() {
+  ["aiDraftBtn", "aiDraftField"].forEach(id => { byId(id).hidden = !aiInfo.ok; });
+  byId("aiInstr").value = "";
+}
+async function aiDraft() {
+  if (!currentDraftEmail) return;
+  const btn = byId("aiDraftBtn"), old = btn.textContent;
+  btn.textContent = "✨ Writing..."; btn.disabled = true;
+  try {
+    byId("draftBody").value = await aiCall({
+      task: "draft", from: currentDraftEmail.from, subject: currentDraftEmail.subject, body: currentDraftEmail.preview,
+      instruction: byId("aiInstr").value, userName: currentUser.fullName, userTitle: currentUser.jobTitle
+    });
+    showToast("AI draft ready. Please read it before sending.", "✨");
+  } catch (err) { showToast(err.message, "⚠️"); }
+  btn.textContent = old; btn.disabled = false;
+}
+
+// ── SHARE TO TEAMS ──
+// Needs three extra Microsoft permissions. They are requested only the first time you click Share to Teams.
+const TEAMS_SCOPES = ["Team.ReadBasic.All", "Channel.ReadBasic.All", "ChannelMessage.Send"];
+let teamsEmail = null, teamsList = null;
+async function teamsToken() {
+  const account = msalInstance.getActiveAccount();
+  try { return (await msalInstance.acquireTokenSilent({ scopes: TEAMS_SCOPES, account })).accessToken; }
+  catch (e) { return (await msalInstance.acquireTokenPopup({ scopes: TEAMS_SCOPES, account })).accessToken; }
+}
+async function teamsGet(path) {
+  const r = await fetch("https://graph.microsoft.com/v1.0" + path, { headers: { Authorization: "Bearer " + await teamsToken() } });
+  if (!r.ok) throw new Error(r.status === 403 ? "Microsoft says you don't have permission for this. Your Microsoft 365 admin may need to approve Teams access for FinMail." : await graphError(r));
+  return (await r.json()).value || [];
+}
+function teamsMsg(e) {
+  const sum = (aiCache[e.id] && aiCache[e.id].t) || e.summary || "";
+  const when = new Date(e.receivedDateTime).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return `📧 ${e.subject || "(no subject)"}\nFrom: ${e.from?.emailAddress?.name || e.from?.emailAddress?.address || "Unknown"}  ·  ${when}\n\n${sum}` + (e.webLink ? `\n\nOpen in Outlook: ${e.webLink}` : "");
+}
+function teamsErr(msg) { const el = byId("tmsErr"); el.textContent = msg || ""; el.hidden = !msg; }
+function closeTeams() { byId("teamsModal").classList.remove("open"); }
+async function openTeams(e) {
+  teamsEmail = e; teamsErr("");
+  byId("tmsMsg").value = teamsMsg(e);
+  byId("tmsPost").disabled = true;
+  byId("tmsTeam").innerHTML = '<option>Loading your teams...</option>';
+  byId("tmsChan").innerHTML = "";
+  byId("teamsModal").classList.add("open");
+  try {
+    if (!teamsList) teamsList = await teamsGet("/me/joinedTeams?$select=id,displayName");
+    if (!teamsList.length) { byId("tmsTeam").innerHTML = "<option>(you are not in any team)</option>"; return; }
+    teamsList.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    let last = {}; try { last = JSON.parse(lsGet(userKey("teams")) || "{}"); } catch (x) {}
+    byId("tmsTeam").innerHTML = teamsList.map(t => `<option value="${esc(t.id)}">${esc(t.displayName)}</option>`).join("");
+    if (last.team && teamsList.some(t => t.id === last.team)) byId("tmsTeam").value = last.team;
+    await loadChannels(byId("tmsTeam").value, last.channel);
+  } catch (err) { teamsList = null; byId("tmsTeam").innerHTML = ""; teamsErr(err.message || String(err)); }
+}
+async function loadChannels(teamId, preferId) {
+  teamsErr(""); byId("tmsPost").disabled = true;
+  byId("tmsChan").innerHTML = "<option>Loading channels...</option>";
+  try {
+    const ch = await teamsGet(`/teams/${teamId}/channels?$select=id,displayName`);
+    byId("tmsChan").innerHTML = ch.map(c => `<option value="${esc(c.id)}">${esc(c.displayName)}</option>`).join("");
+    // suggest the channel whose name shares a word or project number with the email subject
+    const toks = (teamsEmail?.subject || "").toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 4);
+    const guess = ch.find(c => toks.some(w => c.displayName.toLowerCase().includes(w)));
+    const pick = (preferId && ch.some(c => c.id === preferId)) ? preferId : (guess ? guess.id : null);
+    if (pick) byId("tmsChan").value = pick;
+    byId("tmsPost").disabled = !ch.length;
+  } catch (err) { byId("tmsChan").innerHTML = ""; teamsErr(err.message || String(err)); }
+}
+async function postToTeams() {
+  const teamId = byId("tmsTeam").value, chanId = byId("tmsChan").value, text = byId("tmsMsg").value.trim();
+  if (!teamId || !chanId || !text) return;
+  const btn = byId("tmsPost"); btn.disabled = true; btn.textContent = "Posting...";
+  try {
+    const html = esc(text).replace(/(https:\/\/[^\s<]+)/g, '<a href="$1">$1</a>').replace(/\n/g, "<br>");
+    const r = await fetch(`https://graph.microsoft.com/v1.0/teams/${teamId}/channels/${chanId}/messages`, {
+      method: "POST", headers: { Authorization: "Bearer " + await teamsToken(), "Content-Type": "application/json" },
+      body: JSON.stringify({ body: { contentType: "html", content: html } })
+    });
+    if (!r.ok) throw new Error(r.status === 403 ? "Microsoft did not allow posting in this channel. You may need permission, or admin approval for FinMail." : await graphError(r));
+    lsSet(userKey("teams"), JSON.stringify({ team: teamId, channel: chanId }));
+    closeTeams();
+    showToast("Posted to " + byId("tmsChan").selectedOptions[0].text, "💬");
+  } catch (err) { teamsErr(err.message || String(err)); }
+  btn.textContent = "Post to channel"; btn.disabled = false;
+}
+
 // ── DRAFT REPLY ──
 function openDraft(email) {
   const from = email.from?.emailAddress?.name || email.from?.emailAddress?.address || "Sender";
@@ -1364,6 +1530,7 @@ function openDraft(email) {
   document.getElementById("draftSubject").value = `Re: ${subject}`;
   document.getElementById("draftBody").value = generateDraftText(from, subject, preview, cat);
   document.getElementById("draftModal").classList.add("open");
+  syncAiDraftUi();
 }
 
 function generateDraftText(from, subject, preview, cat) {
