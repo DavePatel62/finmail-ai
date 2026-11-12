@@ -1385,6 +1385,20 @@ async function graphError(res) {
   try { const j = await res.json(); return (j.error && j.error.message) || ("Outlook returned " + res.status); }
   catch (e) { return "Outlook returned " + res.status; }
 }
+// Graph sometimes answers 502/503/504 for a moment. Retry, then fall back to a lighter request.
+let recipientsDropped = false;
+async function fetchMsgs(url, gh) {
+  let res = await fetch(url, gh);
+  for (let i = 0; i < 2 && !res.ok && res.status >= 500; i++) {
+    await new Promise(r => setTimeout(r, 1200 * (i + 1)));
+    res = await fetch(url, gh);
+  }
+  if (!res.ok && res.status >= 500 && url.includes(",toRecipients,ccRecipients")) {
+    recipientsDropped = true;   // lighter request: AP@/AR@ group rules cannot be checked
+    res = await fetch(url.replace(",toRecipients,ccRecipients", ""), gh);
+  }
+  return res;
+}
 function applyEmails() {
   const prev = { ...emailStore };
   classifiedEmails = allEmails.map(e => {
@@ -1423,7 +1437,8 @@ async function loadDashboard(soft) {
     const base = "https://graph.microsoft.com/v1.0/me/mailFolders";
     const q = `$top=${emailCount}&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,isRead,bodyPreview,importance,webLink,hasAttachments,toRecipients,ccRecipients`;
     setStep("Fetching inbox...");
-    const inboxRes = await fetch(`${base}/inbox/messages?${q}`, gh);
+    recipientsDropped = false;
+    const inboxRes = await fetchMsgs(`${base}/inbox/messages?${q}`, gh);
     if (!inboxRes.ok) throw new Error(await graphError(inboxRes));
     const merged = ((await inboxRes.json()).value || []).map(m => ({ ...m, folderName: "Inbox" }));
 
@@ -1439,7 +1454,7 @@ async function loadDashboard(soft) {
         loadInfo.subfolders = folders.length;
         const results = await Promise.all(folders.map(async f => {
           try {
-            const r = await fetch(`${base}/${f.id}/messages?${q}`, gh);
+            const r = await fetchMsgs(`${base}/${f.id}/messages?${q}`, gh);
             if (!r.ok) throw new Error(String(r.status));
             return ((await r.json()).value || []).map(m => ({ ...m, folderName: f.displayName }));
           } catch (err) { loadInfo.failed++; return []; }
@@ -1461,7 +1476,7 @@ async function loadDashboard(soft) {
     renderList();
     renderLoadMeta();
     byId("workspace").classList.remove("busy");
-    showToast(`Loaded ${allEmails.length} emails`, "📬");
+    showToast(recipientsDropped ? `Loaded ${allEmails.length} emails (Outlook was busy: AP@/AR@ group rules skipped, press ↻ to retry)` : `Loaded ${allEmails.length} emails`, "📬");
   } catch (err) {
     show("dashboard");
     byId("workspace").classList.remove("busy");
