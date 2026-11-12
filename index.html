@@ -275,6 +275,12 @@ hr{border:none;border-top:1px solid var(--border);margin:28px 0;}
 .att-chip{border:1px solid var(--border);background:var(--surface2);border-radius:7px;padding:3px 10px;color:var(--text);overflow-wrap:anywhere;cursor:pointer;font-size:.78rem;text-align:left;}
 .att-chip:hover{border-color:var(--accent-ink);}
 .att-chip i{font-style:normal;color:var(--muted);font-size:.72rem;}
+.tag-custom{--c:var(--accent-ink);}
+.pv-why{margin-top:8px;font-size:.76rem;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.pv-why b{color:var(--subtle);font-weight:600;}
+.pv-why .link-btn{padding:1px 8px;font-size:.74rem;}
+.tm-add{grid-template-columns:1fr 1.4fr 1fr auto;}
+@media (max-width:900px){.tm-add{grid-template-columns:1fr;}}
 </style>
 <script>try{var _t=localStorage.getItem("finmail.theme");if(_t)document.documentElement.setAttribute("data-theme",_t);}catch(e){}</script>
 <script>/* MSAL 2.38.0 — Embedded locally, no CDN required */
@@ -563,41 +569,84 @@ function hasSpecificDate(text) {
 
 // Legacy broad keywords kept as LOW priority only (won't trigger urgent alone)
 const URGENT_KW = ["urgent","asap","immediately","overdue","past due","expired","expires","expiring","deadline","critical","action required","requires your","needs your","late fee","final notice","outstanding","missing","eod","end of day","by today","by tomorrow","time sensitive"];
-const FINANCE_KW = ["invoice","invoicing","payment","pay","bill","billing","receipt","expense","reimbursement","budget","accounting","finance","financial","audit","reconcil","journal","accrual","accounts payable","accounts receivable","purchase order","po #","po number","wire transfer","remittance","statement","tax","fiscal","quarter","revenue","cost","pricing","quote","proposal","contract","vendor","supplier","refund","credit","debit","balance","cash flow","payroll","salary","reimburse"];
-const PROPOSAL_KW = ["proposal","rfp","rfq","rfi","bid","bidding","solicitation","submittal","submission","scope of work","sow","teaming","teaming agreement","loi","letter of intent","go no-go","shortlist","short list","selection","award","pre-proposal","pre-bid","qualification","sf330","sf-330","technical proposal","cost proposal","price proposal","due date","closing date","proposal due","interview","best value","evaluation","scoring"];
-const CIVIL_KW = ["civil","engineering","design","drawings","plans","specifications","spec","cad","survey","surveying","geotechnical","geotech","structural","grading","drainage","stormwater","storm water","utilities","site plan","plat","permit","permitting","construction","contractor","subcontractor","field","inspection","rfi","submittal","closeout","punch list","as-built","as built","project","task order","notice to proceed","ntp","change order","co #","schedule","milestone","deliverable","report","boring","soil","environmental","wetland","floodplain","topographic","boundary"];
-const LEGAL_KW = ["contract","agreement","nda","non-disclosure","mou","memorandum","legal","attorney","counsel","litigation","claim","dispute","lien","insurance","liability","indemnif","compliance","regulatory","regulation","violation","notice of","cease","subpoena","deposition","settlement","amendment","addendum","exhibit","scope change","change order","terms","conditions"];
-const HR_KW = ["hiring","hire","candidate","interview","onboard","onboarding","offer letter","employment","employee","staff","personnel","hr","human resources","benefits","leave","pto","vacation","performance","review","promotion","termination","resignation","payroll","timesheet","time sheet","training","certification","license renewal","background check"];
-const ADMIN_KW = ["meeting","calendar","schedule","agenda","minutes","conference","webinar","zoom","teams meeting","office","facilities","it support","helpdesk","help desk","password","access","login","subscription","renewal","software","license","equipment","supply","order","shipping","delivery"];
+const FINANCE_KW = ["invoice","invoices","invoicing","payment","payments","payable","bill","bills","billing","receipt","expense","expenses","reimbursement","reimburse","budget","accounting","finance","financial","audit","reconcil","journal","accrual","accounts payable","accounts receivable","purchase order","po #","po number","wire transfer","remittance","tax","taxes","fiscal","revenue","pricing","vendor","supplier","refund","debit","cash flow","payroll","salary"];
+const PROPOSAL_KW = ["proposal","proposals","rfp","rfq","rfi","bid","bids","bidding","solicitation","submittal","scope of work","sow","teaming","teaming agreement","loi","letter of intent","go no-go","shortlist","short list","pre-proposal","pre-bid","sf330","sf-330","technical proposal","cost proposal","price proposal","proposal due"];
+const CIVIL_KW = ["civil","engineering","design","drawings","specifications","autocad","civil 3d","survey","surveying","geotechnical","geotech","structural","grading","drainage","stormwater","storm water","utilities","site plan","plat map","permit","permitting","construction","contractor","subcontractor","inspection","closeout","punch list","as-built","as built","task order","notice to proceed","ntp","change order","co #","boring","soil","wetland","floodplain","topographic"];
+const LEGAL_KW = ["contract","agreement","nda","non-disclosure","mou","memorandum","legal","attorney","counsel","litigation","claim","dispute","lien","insurance","liability","indemnif","compliance","regulatory","regulation","violation","cease and desist","subpoena","deposition","settlement","amendment","addendum"];
+const HR_KW = ["hiring","hire","candidate","interview","onboard","onboarding","offer letter","employment","employee","employees","personnel","hr","human resources","benefits","pto","vacation","promotion","termination","resignation","timesheet","time sheet","license renewal","background check"];
+const ADMIN_KW = ["meeting","calendar","agenda","minutes","webinar","zoom","teams meeting","facilities","it support","helpdesk","help desk","password","login","subscription","renewal","software","license","equipment","shipping"];
 const APPROVAL_KW = ["approve","approval","approved","review and approve","sign off","authorization","authorize","permission","consent","please approve","needs your approval","awaiting approval"];
 const PAYMENT_KW = ["payment received","payment confirmed","paid","transaction","transfer complete","wire confirmed","ach","payment processed"];
 
-function classifyEmail(e) {
-  const text = ((e.subject||"") + " " + (e.bodyPreview||"")).toLowerCase();
-  // Precise urgent: must match a specific deadline phrase OR a date pattern OR high importance
-  const hasUrgentPhrase = URGENT_PHRASES.some(p => text.includes(p.toLowerCase()));
-  const hasDateDeadline = hasSpecificDate(text);
-  const isUrgent = e.importance === "high" || hasUrgentPhrase || hasDateDeadline;
-  const isFinance  = FINANCE_KW.some(k => text.includes(k));
-  const isApproval = APPROVAL_KW.some(k => text.includes(k));
-  const isPayment  = PAYMENT_KW.some(k => text.includes(k));
-  const isProposal = PROPOSAL_KW.some(k => text.includes(k));
-  const isCivil    = CIVIL_KW.some(k => text.includes(k));
-  const isLegal    = LEGAL_KW.some(k => text.includes(k));
-  const isHR       = HR_KW.some(k => text.includes(k));
-  const isAdmin    = ADMIN_KW.some(k => text.includes(k));
+// ── MATCHING ──
+// Words of 3 letters or fewer must match as a whole word ("hr" will not match "through").
+// Longer words match from the start of a word ("approv" matches "approval", but "bid" will not match "forbidden").
+const _reCache = {};
+function wordHit(text, k) {
+  let r = _reCache[k];
+  if (!r) {
+    const esc_ = k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    r = _reCache[k] = new RegExp("(^|[^a-z0-9])" + esc_ + (k.length <= 3 ? "($|[^a-z0-9])" : ""));
+  }
+  return r.test(text);
+}
+function firstHit(text, list) { return list.find(k => wordHit(text, k.toLowerCase())) || null; }
+const KEYWORD_ORDER = [["payment", PAYMENT_KW], ["approval", APPROVAL_KW], ["invoice", FINANCE_KW], ["proposal", PROPOSAL_KW],
+                       ["civil", CIVIL_KW], ["legal", LEGAL_KW], ["hr", HR_KW], ["admin", ADMIN_KW]];
+const FIELD_LABEL = { subject: "the subject", sender: "the sender", any: "the subject, sender or preview" };
 
-  // Urgent overrides everything
-  if (isUrgent) return { cat:"urgent", urgent:true, finance:isFinance, proposal:isProposal, civil:isCivil, legal:isLegal, hr:isHR };
-  if (isPayment)  return { cat:"payment",  urgent:false, finance:true,  proposal:false, civil:false, legal:false, hr:false };
-  if (isApproval) return { cat:"approval", urgent:false, finance:isFinance, proposal:isProposal, civil:isCivil, legal:false, hr:false };
-  if (isFinance)  return { cat:"invoice",  urgent:false, finance:true,  proposal:false, civil:false, legal:false, hr:false };
-  if (isProposal) return { cat:"proposal", urgent:false, finance:false, proposal:true,  civil:false, legal:false, hr:false };
-  if (isCivil)    return { cat:"civil",    urgent:false, finance:false, proposal:false, civil:true,  legal:false, hr:false };
-  if (isLegal)    return { cat:"legal",    urgent:false, finance:false, proposal:false, civil:false, legal:true,  hr:false };
-  if (isHR)       return { cat:"hr",       urgent:false, finance:false, proposal:false, civil:false, legal:false, hr:true  };
-  if (isAdmin)    return { cat:"admin",    urgent:false, finance:false, proposal:false, civil:false, legal:false, hr:false };
-  return           { cat:"info",     urgent:false, finance:false, proposal:false, civil:false, legal:false, hr:false };
+// ── COMPANY-WIDE RULES (AB Consultants) ──
+// Checked after a person's own tabs and before the keyword categories.
+const COMPANY_RULES = [
+  { cat:"notice",    field:"sender",    words:["accounting@abconsultantsinc.com"], text:"is an automated ERP notice from accounting@abconsultantsinc.com (information only)" },
+  { cat:"admin",     field:"subject",   words:["1111"], text:"has the company code 1111 in the subject (Admin)" },
+  { cat:"marketing", field:"subject",   words:["2222"], text:"has the company code 2222 in the subject (Marketing)" },
+  { cat:"ar",        field:"subject",   words:["5555"], text:"has the company code 5555 in the subject (AR collections)" },
+  { cat:"ap",        field:"recipient", words:["ap@abconsultantsinc.com"], text:"was sent to the AP@abconsultantsinc.com group (Accounts Payable)" },
+  { cat:"ar",        field:"recipient", words:["ar@abconsultantsinc.com"], text:"was sent to the AR@abconsultantsinc.com group (AR collections)" }
+];
+function recipientText(e) {
+  return [].concat(e.toRecipients || [], e.ccRecipients || []).map(r => (r.emailAddress?.address || "")).join(" ").toLowerCase();
+}
+function matchCompany(e) {
+  for (const r of COMPANY_RULES) {
+    let hit = null;
+    if (r.field === "sender") { const a = (e.from?.emailAddress?.address || "").toLowerCase(); hit = r.words.find(w => a === w); }
+    else if (r.field === "recipient") { const t = recipientText(e); hit = r.words.find(w => t.includes(w)); }
+    else {
+      const sub = (e.subject || "").toLowerCase();
+      hit = r.words.find(w => /^\d+$/.test(w) ? new RegExp("(^|\\D)" + w + "(\\D|$)").test(sub) : sub.includes(w));
+    }
+    if (hit) return { cat: r.cat, why: r.text };
+  }
+  return null;
+}
+
+// Your own tabs come first, then company rules, then the built-in keyword categories.
+// Every email gets exactly ONE category. "Urgent" is separate: a flag that can sit on top of any category.
+function classifyEmail(e) {
+  const text = ((e.subject || "") + " " + (e.bodyPreview || "")).toLowerCase();
+  const urgent = e.importance === "high" || URGENT_PHRASES.some(p => text.includes(p.toLowerCase())) || hasSpecificDate(text);
+  let cat = null, why = "";
+  for (const t of tabPrefs.custom) {
+    const k = matchCustom(e, t);
+    if (k) { cat = "custom:" + t.id; why = `${FIELD_LABEL[t.field || "any"]} contains “${k}” (your tab rule)`; break; }
+  }
+  if (!cat) { const c = matchCompany(e); if (c) { cat = c.cat; why = c.why; } }
+  if (!cat) {
+    for (const [key, list] of KEYWORD_ORDER) {
+      const k = firstHit(text, list);
+      if (k) { cat = key; why = `the word “${k}” appears in the subject or preview`; break; }
+    }
+  }
+  if (!cat) { cat = "info"; why = "no category words were found"; }
+  return { cat, urgent: urgent && cat !== "notice", why };   // automated notices are information only, never urgent
+}
+function matchCustom(e, t) {
+  const sub = (e.subject || "").toLowerCase();
+  const snd = senderText(e).toLowerCase();
+  const hay = t.field === "subject" ? sub : t.field === "sender" ? snd : sub + " " + snd + " " + (e.bodyPreview || "").toLowerCase();
+  return (t.kw || []).find(k => k && hay.includes(k)) || null;
 }
 
 function makeSummary(e, cat) {
@@ -679,7 +728,9 @@ function saveDone() { lsSet(userKey("done"), JSON.stringify([...doneEmails].slic
 // ── TABS ──
 // Every email belongs to exactly ONE category (first match wins, in this order), so the category counts add up to the total.
 const CATS = [
-  { key:"urgent",   icon:"🔴", label:"Urgent" },
+  { key:"ar",        icon:"💰", label:"AR Collections",   rule:"company: code 5555 or sent to AR@" },
+  { key:"ap",        icon:"💼", label:"Accounts Payable", rule:"company: sent to AP@" },
+  { key:"marketing", icon:"📣", label:"Marketing",        rule:"company: code 2222" },
   { key:"payment",  icon:"💳", label:"Payments" },
   { key:"approval", icon:"✅", label:"Approvals" },
   { key:"invoice",  icon:"🧾", label:"Finance" },
@@ -687,26 +738,29 @@ const CATS = [
   { key:"civil",    icon:"🏗️", label:"Engineering" },
   { key:"legal",    icon:"⚖️", label:"Legal" },
   { key:"hr",       icon:"👥", label:"HR" },
-  { key:"admin",    icon:"🗂️", label:"Admin" },
+  { key:"admin",    icon:"🗂️", label:"Admin",            rule:"company: code 1111" },
+  { key:"notice",   icon:"🔔", label:"ERP Notices",      rule:"company: from accounting@" },
   { key:"info",     icon:"📄", label:"Other" }
 ];
-const DOT = { urgent:"red", invoice:"amber", approval:"blue", payment:"green", proposal:"blue", civil:"green", legal:"amber", hr:"blue", admin:"", info:"" };
-const TAG = { urgent:"tag-urgent", invoice:"tag-invoice", approval:"tag-approval", payment:"tag-payment", proposal:"tag-proposal", civil:"tag-civil", legal:"tag-legal", hr:"tag-hr", admin:"tag-info", info:"tag-info" };
+const DOT = { ar:"amber", ap:"amber", marketing:"blue", notice:"", urgent:"red", invoice:"amber", approval:"blue", payment:"green", proposal:"blue", civil:"green", legal:"amber", hr:"blue", admin:"", info:"" };
+const TAG = { ar:"tag-invoice", ap:"tag-invoice", marketing:"tag-proposal", notice:"tag-info", urgent:"tag-urgent", invoice:"tag-invoice", approval:"tag-approval", payment:"tag-payment", proposal:"tag-proposal", civil:"tag-civil", legal:"tag-legal", hr:"tag-hr", admin:"tag-info", info:"tag-info" };
 
-function senderText(e) { return (e.from?.emailAddress?.name || "") + " " + (e.from?.emailAddress?.address || ""); }
-function matchesCustom(e, t) {
-  const text = (senderText(e) + " " + (e.subject || "") + " " + (e.bodyPreview || "")).toLowerCase();
-  return (t.kw || []).some(k => k && text.includes(k));
+function catLabel(cat) {
+  if (cat.startsWith("custom:")) { const t = tabPrefs.custom.find(c => "custom:" + c.id === cat); return t ? t.name : "My tab"; }
+  const c = CATS.find(x => x.key === cat);
+  return c ? c.label : "Other";
 }
+function catTagClass(cat) { return cat.startsWith("custom:") ? "tag-custom" : (TAG[cat] || "tag-info"); }
+function tagsHtml(e) {
+  return `<span class="tag ${catTagClass(e.cat)}">${esc(catLabel(e.cat))}</span>` + (e.urgent ? '<span class="tag tag-urgent">urgent</span>' : "");
+}
+function senderText(e) { return (e.from?.emailAddress?.name || "") + " " + (e.from?.emailAddress?.address || ""); }
 function emailsFor(key) {
   if (key === "all") return classifiedEmails;
   if (key === "unread") return classifiedEmails.filter(e => !e.isRead);
   if (key === "done") return classifiedEmails.filter(e => doneEmails.has(e.id));
   if (key.startsWith("folder:")) { const n = key.slice(7); return classifiedEmails.filter(e => e.folderName === n); }
-  if (key.startsWith("custom:")) {
-    const t = tabPrefs.custom.find(c => "custom:" + c.id === key);
-    return t ? classifiedEmails.filter(e => matchesCustom(e, t)) : [];
-  }
+  if (key === "urgent") return classifiedEmails.filter(e => e.urgent);
   return classifiedEmails.filter(e => e.cat === key);
 }
 function folderNames() {
@@ -716,7 +770,7 @@ function folderNames() {
 }
 function tabDefs() {
   const defs = [{ key:"all", icon:"📬", label:"All", fixed:true }, { key:"urgent", icon:"🔴", label:"Urgent", fixed:true }];
-  CATS.filter(c => c.key !== "urgent").forEach(c => defs.push({ key:c.key, icon:c.icon, label:c.label, group:"cat" }));
+  CATS.forEach(c => defs.push({ key:c.key, icon:c.icon, label:c.label, group:"cat", rule:c.rule }));
   folderNames().forEach(f => defs.push({ key:"folder:" + f, icon:"📁", label:f, group:"folder" }));
   tabPrefs.custom.forEach(c => defs.push({ key:"custom:" + c.id, icon:"⭐", label:c.name, group:"custom" }));
   defs.push({ key:"unread", icon:"🔵", label:"Unread", fixed:true }, { key:"done", icon:"☑️", label:"Done", fixed:true });
@@ -747,22 +801,29 @@ function setFilter(key) {
 // ── TABS MODAL ──
 function openTabsModal() { renderTabsModal(); byId("tabsModal").classList.add("open"); }
 function closeTabsModal() { byId("tabsModal").classList.remove("open"); }
+function ruleText(d) {
+  const t = tabPrefs.custom.find(c => "custom:" + c.id === d.key);
+  return t ? ` <span class="n" style="margin-left:6px">${esc(FIELD_LABEL[t.field || "any"].replace("the ", ""))} contains ${esc((t.kw || []).join(", "))}</span>` : "";
+}
 function tmRow(d) {
   const checked = tabPrefs.hidden.includes(d.key) ? "" : "checked";
   const rm = d.group === "custom" ? `<button class="rm" data-rmcustom="${esc(d.key.slice(7))}" title="Delete this tab" aria-label="Delete tab">✕</button>` : "";
-  return `<label class="tm-row"><input type="checkbox" data-tabkey="${esc(d.key)}" ${checked}> ${d.icon} ${esc(d.label)}<span class="n">${d.count} loaded</span>${rm}</label>`;
+  return `<label class="tm-row"><input type="checkbox" data-tabkey="${esc(d.key)}" ${checked}> ${d.icon} ${esc(d.label)}${d.group === "custom" ? ruleText(d) : (d.rule ? ` <span class="n" style="margin-left:6px">${esc(d.rule)}</span>` : "")}<span class="n">${d.count} loaded</span>${rm}</label>`;
 }
 function renderTabsModal() {
   const defs = tabDefs().filter(d => !d.fixed);
   const sec = (title, help, rows) => rows.length ? `<div class="tm-section"><h4>${title}</h4>${help ? `<div class="tm-help">${help}</div>` : ""}${rows.map(tmRow).join("")}</div>` : "";
-  byId("tmBody").innerHTML =
-    sec("Categories", "Untick a category you never use. A category tab only appears when you actually have emails in it.", defs.filter(d => d.group === "cat")) +
-    sec("Your Outlook subfolders", "Each subfolder (for example, ones your Outlook rules fill) can be its own tab.", defs.filter(d => d.group === "folder")) +
-    sec("My own tabs", "", defs.filter(d => d.group === "custom")) +
-    `<div class="tm-section"><h4>Add your own tab</h4>
-       <div class="tm-help">Give it a name and a few words to look for, separated by commas. Any email whose sender, subject or preview contains one of them goes in the tab.</div>
-       <div class="tm-add"><input class="modal-input" id="ctName" maxlength="24" placeholder="Tab name"><input class="modal-input" id="ctKw" placeholder="e.g. site visit, field report, inspection"><button class="btn btn-primary" id="ctAdd">Add tab</button></div>
+  const addForm = `<div class="tm-section"><h4>Add your own tab</h4>
+       <div class="tm-help">Name the tab, choose where to look, and list the words (separated by commas). Example: tab “AR Invoice Approvals”, look in the subject, word “1111”.</div>
+       <div class="tm-add"><input class="modal-input" id="ctName" maxlength="24" placeholder="Tab name">
+         <select class="modal-input" id="ctField"><option value="subject">Subject contains</option><option value="sender">Sender contains</option><option value="any">Subject, sender or preview contains</option></select>
+         <input class="modal-input" id="ctKw" placeholder="e.g. 1111"><button class="btn btn-primary" id="ctAdd">Add tab</button></div>
      </div>`;
+  byId("tmBody").innerHTML =
+    addForm +
+    sec("My own tabs", "Your tabs are checked first, in this order, and override the automatic categories. An email goes in only one tab.", defs.filter(d => d.group === "custom")) +
+    sec("Automatic categories", "Untick a category you never use. A category tab only appears when you actually have emails in it.", defs.filter(d => d.group === "cat")) +
+    sec("Your Outlook subfolders", "Each subfolder (for example, ones your Outlook rules fill) can be its own tab.", defs.filter(d => d.group === "folder"));
 }
 function tabsModalClick(e) {
   if (e.target === byId("tabsModal")) { closeTabsModal(); return; }
@@ -770,16 +831,22 @@ function tabsModalClick(e) {
   if (rm) {
     e.preventDefault();
     tabPrefs.custom = tabPrefs.custom.filter(c => c.id !== rm.dataset.rmcustom);
-    saveTabPrefs(); renderTabs(); renderTabsModal(); renderList(true); return;
+    saveTabPrefs(); reclassify(); renderTabsModal(); return;
   }
   if (e.target.id === "ctAdd") {
     const name = byId("ctName").value.trim().slice(0, 24);
     const kw = byId("ctKw").value.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
     if (!name || !kw.length) { showToast("Enter a tab name and at least one word", "⚠️"); return; }
     if (tabPrefs.custom.length >= 12) { showToast("You can have up to 12 of your own tabs", "⚠️"); return; }
-    tabPrefs.custom.push({ id: Date.now().toString(36), name, kw });
-    saveTabPrefs(); renderTabs(); renderTabsModal(); showToast(`Added tab "${name}"`, "⭐");
+    tabPrefs.custom.push({ id: Date.now().toString(36), name, kw, field: byId("ctField").value });
+    saveTabPrefs(); reclassify(); renderTabsModal(); showToast(`Added tab "${name}"`, "⭐");
   }
+}
+function reclassify() {
+  applyEmails();
+  renderTabs();
+  renderList(true);
+  if (selectedId && emailStore[selectedId]) selectEmail(selectedId);
 }
 function tabsModalChange(e) {
   const cb = e.target.closest("[data-tabkey]");
@@ -812,9 +879,9 @@ function rowHtml(e) {
   const timeStr = (Date.now() - t) < 86400000 ? t.toLocaleTimeString([], { hour:"numeric", minute:"2-digit" }) : t.toLocaleDateString([], { month:"short", day:"numeric" });
   const cls = ["row", e.isRead ? "" : "unread", doneEmails.has(e.id) ? "done" : "", e.id === selectedId ? "sel" : ""].filter(Boolean).join(" ");
   return `<div class="${cls}" data-id="${esc(e.id)}" role="option" aria-selected="${e.id === selectedId}">
-    <div class="dot ${DOT[e.cat] || ""}"></div>
+    <div class="dot ${e.urgent ? "red" : (DOT[e.cat] || "")}"></div>
     <div class="row-main">
-      <div class="row-top"><span class="row-from">${esc(from)}</span><span class="tag ${TAG[e.cat] || "tag-info"}">${esc(e.cat)}</span><span class="row-time">${timeStr}</span></div>
+      <div class="row-top"><span class="row-from">${esc(from)}</span>${tagsHtml(e)}<span class="row-time">${timeStr}</span></div>
       <div class="row-subj">${e.hasAttachments ? "📎 " : ""}${esc(e.subject || "(no subject)")}</div>
       <div class="row-sum">${esc(e.summary)}</div>
     </div></div>`;
@@ -844,7 +911,7 @@ async function runRemoteSearch() {
     const token = await getToken();
     const gh = { headers: { Authorization: `Bearer ${token}` } };
     const url = "https://graph.microsoft.com/v1.0/me/messages?$search=" + encodeURIComponent('"' + term + '"') +
-      "&$top=50&$select=id,subject,from,receivedDateTime,isRead,bodyPreview,importance,webLink,hasAttachments,parentFolderId";
+      "&$top=50&$select=id,subject,from,receivedDateTime,isRead,bodyPreview,importance,webLink,hasAttachments,parentFolderId,toRecipients,ccRecipients";
     const res = await fetch(url, gh);
     if (!res.ok) throw new Error(await graphError(res));
     const items = (await res.json()).value || [];
@@ -859,7 +926,7 @@ async function runRemoteSearch() {
     const results = items.map(m => {
       if (emailStore[m.id]) return emailStore[m.id];
       const c = classifyEmail(m);
-      const e = { ...m, folderName: folderNameCache[m.parentFolderId] || "Other folder", ...c, summary: makeSummary(m, c.cat) };
+      const e = { ...m, folderName: folderNameCache[m.parentFolderId] || "Other folder", ...c, summary: makeSummary(m, c.urgent ? "urgent" : c.cat) };
       emailStore[e.id] = e;
       return e;
     }).sort((a, b) => new Date(b.receivedDateTime) - new Date(a.receivedDateTime));
@@ -894,13 +961,14 @@ function renderPreview(e) {
       <div class="pv-subject">${esc(e.subject || "(no subject)")}</div>
       <div class="pv-meta"><span class="lab">From</span> ${esc(from)}${addr ? " &lt;" + esc(addr) + "&gt;" : ""}<br>
         <span class="lab">To</span> <span id="pvTo">...</span><br>
-        ${esc(when)} · <span class="tag ${TAG[e.cat] || "tag-info"}">${esc(e.cat)}</span> · 📁 ${esc(e.folderName || "Inbox")}</div>
+        ${esc(when)} · ${tagsHtml(e)} · 📁 ${esc(e.folderName || "Inbox")}</div>
       <div class="pv-actions">
         <button class="btn btn-primary" data-pv="draft">✍️ Draft reply</button>
         <button class="btn btn-ghost" data-pv="done" id="pvDoneBtn">${isDone ? "↩ Undo done" : "✅ Mark done"}</button>
         ${e.webLink ? '<button class="btn btn-ghost" data-pv="outlook">Open in Outlook ↗</button>' : ""}
       </div>
       <div class="pv-note">${esc(e.summary)}</div>
+      <div class="pv-why">Sorted into <b>${esc(catLabel(e.cat))}</b> because ${esc(e.why || "")}. <button class="link-btn" data-pv="fix">Sort differently…</button></div>
       ${e.hasAttachments ? '<div class="pv-att" id="pvAtt">📎 Checking attachments...</div>' : ""}
     </div>
     <div class="pv-scroll"><div class="pv-body" id="pvBody"><span class="pv-loading">Loading full email...</span></div></div>`;
@@ -1004,6 +1072,7 @@ function previewClick(evt) {
   if (!e) return;
   if (b.dataset.pv === "draft") openDraft(e);
   else if (b.dataset.pv === "done") toggleDone(selectedId);
+  else if (b.dataset.pv === "fix") openTabsModal();
   else if (b.dataset.pv === "outlook" && e.webLink) window.open(e.webLink, "_blank", "noopener");
 }
 function toggleDone(id) {
@@ -1092,7 +1161,7 @@ function openDraft(email) {
   const fromEmail = email.from?.emailAddress?.address || "";
   const subject = email.subject || "";
   const preview = email.fullBody || email.bodyPreview || "";
-  const cat = email.cat || "info";
+  const cat = email.urgent ? "urgent" : (["invoice","approval","payment","proposal","civil","legal","hr"].includes(email.cat) ? email.cat : "info");
 
   currentDraftEmail = { from, fromEmail, subject, preview, cat };
   document.getElementById("draftTo").value = fromEmail ? `${from} <${fromEmail}>` : from;
@@ -1316,6 +1385,27 @@ async function graphError(res) {
   try { const j = await res.json(); return (j.error && j.error.message) || ("Outlook returned " + res.status); }
   catch (e) { return "Outlook returned " + res.status; }
 }
+function applyEmails() {
+  const prev = { ...emailStore };
+  classifiedEmails = allEmails.map(e => {
+    const c = classifyEmail(e);
+    const o = { ...e, ...c, summary: makeSummary(e, c.urgent ? "urgent" : c.cat) };
+    if (prev[e.id] && prev[e.id].toLine !== undefined) { o.toLine = prev[e.id].toLine; o.fullBody = prev[e.id].fullBody; }
+    return o;
+  });
+  Object.keys(emailStore).forEach(k => delete emailStore[k]);
+  classifiedEmails.forEach(e => { emailStore[e.id] = e; });
+
+  const urgentList  = classifiedEmails.filter(e => e.urgent);
+  const financeList = classifiedEmails.filter(e => e.cat === "invoice");
+  byId("sUrgent").textContent = urgentList.length;
+  byId("sFinance").textContent = financeList.length;
+  byId("sSummaries").textContent = allEmails.length;
+  byId("sUnread").textContent = classifiedEmails.filter(e => !e.isRead).length;
+  byId("briefing").innerHTML = generateBriefing(allEmails, urgentList, financeList);
+  renderActions(generateActions(urgentList, financeList));
+}
+
 async function loadDashboard(soft) {
   if (soft) { byId("loadMeta").textContent = "Refreshing from Outlook..."; byId("workspace").classList.add("busy"); }
   else show("loadingScreen");
@@ -1331,7 +1421,7 @@ async function loadDashboard(soft) {
     loadDone();
 
     const base = "https://graph.microsoft.com/v1.0/me/mailFolders";
-    const q = `$top=${emailCount}&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,isRead,bodyPreview,importance,webLink,hasAttachments`;
+    const q = `$top=${emailCount}&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,isRead,bodyPreview,importance,webLink,hasAttachments,toRecipients,ccRecipients`;
     setStep("Fetching inbox...");
     const inboxRes = await fetch(`${base}/inbox/messages?${q}`, gh);
     if (!inboxRes.ok) throw new Error(await graphError(inboxRes));
@@ -1363,19 +1453,7 @@ async function loadDashboard(soft) {
     allEmails = merged.slice(0, emailCount);
     loadInfo.at = new Date();
 
-    classifiedEmails = allEmails.map(e => { const c = classifyEmail(e); return { ...e, ...c, summary: makeSummary(e, c.cat) }; });
-    Object.keys(emailStore).forEach(k => delete emailStore[k]);
-    classifiedEmails.forEach(e => { emailStore[e.id] = e; });
-
-    const urgentList  = classifiedEmails.filter(e => e.cat === "urgent");
-    const financeList = classifiedEmails.filter(e => e.cat === "invoice");
-    const unread      = classifiedEmails.filter(e => !e.isRead).length;
-    byId("sUrgent").textContent = urgentList.length;
-    byId("sFinance").textContent = financeList.length;
-    byId("sSummaries").textContent = allEmails.length;
-    byId("sUnread").textContent = unread;
-    byId("briefing").innerHTML = generateBriefing(allEmails, urgentList, financeList);
-    renderActions(generateActions(urgentList, financeList));
+    applyEmails();
 
     currentFilter = "all"; searchQuery = ""; remoteMode = null; byId("searchInput").value = "";
     if (selectedId && !emailStore[selectedId]) { selectedId = null; renderPreview(null); }
