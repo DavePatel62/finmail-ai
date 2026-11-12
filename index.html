@@ -281,6 +281,36 @@ hr{border:none;border-top:1px solid var(--border);margin:28px 0;}
 .pv-why .link-btn{padding:1px 8px;font-size:.74rem;}
 .tm-add{grid-template-columns:1fr 1.4fr 1fr auto;}
 @media (max-width:900px){.tm-add{grid-template-columns:1fr;}}
+
+/* pins + snooze */
+.row.pinned{border-left-color:var(--amber,#d89b1d);}
+.pv-snooze{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:.78rem;color:var(--muted);}
+.pv-snzinfo{margin-top:8px;font-size:.8rem;color:var(--subtle);}
+/* digest */
+.modal-wide{width:860px;}
+.dg-controls{display:flex;gap:18px;align-items:center;padding:10px 24px;border-bottom:1px solid var(--border);font-size:.8rem;color:var(--subtle);flex-wrap:wrap;}
+.dg-controls label{display:flex;gap:6px;align-items:center;}
+.dg-doc{background:#fff;color:#111;border-radius:10px;padding:22px 26px;font-size:.84rem;line-height:1.45;}
+.dg-title{font-size:1.25rem;font-weight:700;}
+.dg-sub{color:#555;margin-top:2px;}
+.dg-stats{display:flex;gap:18px;margin:12px 0 4px;padding:8px 0;border-top:1px solid #ddd;border-bottom:1px solid #ddd;flex-wrap:wrap;}
+.dg-sec{margin-top:16px;break-inside:avoid-page;}
+.dg-h{font-weight:700;font-size:.95rem;border-bottom:2px solid #222;padding-bottom:3px;display:flex;gap:8px;}
+.dg-h span{color:#666;font-weight:500;}
+.dg-item{display:flex;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px solid #eee;break-inside:avoid;}
+.dg-r{flex:none;color:#555;font-size:.76rem;white-space:nowrap;}
+.dg-sum{color:#555;font-size:.78rem;}
+.dg-fl{font-size:.74rem;color:#a33;}
+.dg-empty{color:#555;margin-top:14px;}
+.dg-foot{margin-top:18px;font-size:.72rem;color:#777;}
+@media print{
+  body.printing-digest > *:not(#digestModal){display:none !important;}
+  body.printing-digest #digestModal{display:block !important;position:static;background:none;backdrop-filter:none;}
+  body.printing-digest #digestModal .modal{width:auto;max-width:none;border:none;box-shadow:none;background:#fff;}
+  body.printing-digest .modal-head,body.printing-digest .modal-footer,body.printing-digest .dg-controls{display:none !important;}
+  body.printing-digest .modal-body{max-height:none !important;overflow:visible !important;padding:0;}
+  body.printing-digest .dg-doc{padding:0;}
+}
 </style>
 <script>try{var _t=localStorage.getItem("finmail.theme");if(_t)document.documentElement.setAttribute("data-theme",_t);}catch(e){}</script>
 <script>/* MSAL 2.38.0 — Embedded locally, no CDN required */
@@ -419,6 +449,7 @@ var st,ct,ut,lt,dt,ht,pt,gt,ft,mt=function(){function t(e,t,r){this.networkInter
     </div>
     <div class="strip-right">
       <span class="date-chip" id="dateChip"></span>
+      <button class="link-btn" id="digestBtn" title="One-page summary to print or email">📄 Digest</button>
       <button class="link-btn" id="briefBtn" aria-expanded="false">Briefing &amp; actions ▾</button>
     </div>
   </div>
@@ -495,6 +526,26 @@ var st,ct,ut,lt,dt,ht,pt,gt,ft,mt=function(){function t(e,t,r){this.networkInter
     </div>
     <div class="modal-body" id="tmBody" style="max-height:66vh;overflow:auto"></div>
     <div class="modal-footer"><button class="btn btn-primary" id="tmDone">Done</button></div>
+  </div>
+</div>
+
+<!-- DIGEST MODAL -->
+<div class="modal-overlay" id="digestModal">
+  <div class="modal modal-wide" role="dialog" aria-labelledby="dgTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="dgTitle">📄 Digest</div>
+      <button class="modal-close" id="dgClose" aria-label="Close">✕</button>
+    </div>
+    <div class="dg-controls">
+      <label>Period <select class="sel" id="dgPeriod"><option value="today">Today</option><option value="week" selected>Last 7 days</option><option value="all">Everything loaded</option></select></label>
+      <label><input type="checkbox" id="dgHideDone" checked> Hide emails marked done</label>
+    </div>
+    <div class="modal-body" style="max-height:62vh;overflow:auto"><div class="dg-doc" id="dgDoc"></div></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="dgCopy">📋 Copy</button>
+      <button class="btn btn-ghost" id="dgMail">✉️ Email to myself</button>
+      <button class="btn btn-primary" id="dgPrint">🖨 Print / Save as PDF</button>
+    </div>
   </div>
 </div>
 
@@ -723,6 +774,49 @@ function saveTabPrefs() { lsSet(userKey("tabs"), JSON.stringify(tabPrefs)); }
 function loadDone() {
   try { doneEmails = new Set(JSON.parse(lsGet(userKey("done")) || "[]")); } catch (e) { doneEmails = new Set(); }
 }
+// ── PINS + SNOOZE (per user, per browser) ──
+// pins: a Set of email ids kept at the top.  snoozeMap: { emailId: timestamp when it comes back }.
+let pins = new Set();
+let snoozeMap = {};
+function loadPins() {
+  try { pins = new Set(JSON.parse(lsGet(userKey("pins")) || "[]")); } catch (e) { pins = new Set(); }
+  try { const m = JSON.parse(lsGet(userKey("snooze")) || "{}"); snoozeMap = (m && typeof m === "object") ? m : {}; } catch (e) { snoozeMap = {}; }
+  pruneSnoozes();
+}
+function savePins()    { lsSet(userKey("pins"),   JSON.stringify([...pins].slice(-500))); }
+function saveSnoozes() { lsSet(userKey("snooze"), JSON.stringify(snoozeMap)); }
+function isSnoozed(id) { return !!snoozeMap[id] && snoozeMap[id] > Date.now(); }
+function pruneSnoozes() {                      // forget snoozes whose time has passed
+  let woke = 0;
+  Object.keys(snoozeMap).forEach(k => { if (snoozeMap[k] <= Date.now()) { delete snoozeMap[k]; woke++; } });
+  if (woke) saveSnoozes();
+  return woke;
+}
+function snoozeTime(kind) {                    // when should it come back?
+  const d = new Date();
+  if (kind === "3h") return Date.now() + 3 * 3600000;
+  if (kind === "tom") { d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0); return d.getTime(); }
+  const add = (1 - d.getDay() + 7) % 7 || 7;   // next Monday (a Monday snoozes to the following Monday)
+  d.setDate(d.getDate() + add); d.setHours(8, 0, 0, 0); return d.getTime();
+}
+function fmtWhen(ts) { return new Date(ts).toLocaleString([], { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); }
+function snoozeEmail(id, kind) {
+  snoozeMap[id] = snoozeTime(kind); pins.delete(id); saveSnoozes(); savePins();
+  selectedId = null; renderPreview(null);
+  showToast("Snoozed until " + fmtWhen(snoozeMap[id]), "💤");
+  renderTabs(); renderList(true);
+}
+function wakeEmail(id) {
+  delete snoozeMap[id]; saveSnoozes();
+  showToast("Email is back in your list", "⏰");
+  renderTabs(); renderList(true); selectEmail(id);
+}
+function togglePin(id) {
+  if (pins.has(id)) pins.delete(id); else { pins.add(id); showToast("Pinned to the top", "📌"); }
+  savePins();
+  const b = byId("pvPinBtn"); if (b) b.textContent = pins.has(id) ? "📌 Unpin" : "📌 Pin";
+  renderTabs(); renderList(true);
+}
 function saveDone() { lsSet(userKey("done"), JSON.stringify([...doneEmails].slice(-1000))); }
 
 // ── TABS ──
@@ -756,12 +850,15 @@ function tagsHtml(e) {
 }
 function senderText(e) { return (e.from?.emailAddress?.name || "") + " " + (e.from?.emailAddress?.address || ""); }
 function emailsFor(key) {
-  if (key === "all") return classifiedEmails;
-  if (key === "unread") return classifiedEmails.filter(e => !e.isRead);
-  if (key === "done") return classifiedEmails.filter(e => doneEmails.has(e.id));
-  if (key.startsWith("folder:")) { const n = key.slice(7); return classifiedEmails.filter(e => e.folderName === n); }
-  if (key === "urgent") return classifiedEmails.filter(e => e.urgent);
-  return classifiedEmails.filter(e => e.cat === key);
+  if (key === "snoozed") return classifiedEmails.filter(e => isSnoozed(e.id));
+  const live = classifiedEmails.filter(e => !isSnoozed(e.id));   // snoozed emails are hidden everywhere except their own tab
+  if (key === "all") return live;
+  if (key === "unread") return live.filter(e => !e.isRead);
+  if (key === "done") return live.filter(e => doneEmails.has(e.id));
+  if (key === "pinned") return live.filter(e => pins.has(e.id));
+  if (key.startsWith("folder:")) { const n = key.slice(7); return live.filter(e => e.folderName === n); }
+  if (key === "urgent") return live.filter(e => e.urgent);
+  return live.filter(e => e.cat === key);
 }
 function folderNames() {
   const counts = {};
@@ -769,20 +866,28 @@ function folderNames() {
   return Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
 }
 function tabDefs() {
-  const defs = [{ key:"all", icon:"📬", label:"All", fixed:true }, { key:"urgent", icon:"🔴", label:"Urgent", fixed:true }];
+  const defs = [{ key:"all", icon:"📬", label:"All", fixed:true }, { key:"urgent", icon:"🔴", label:"Urgent", fixed:true }, { key:"pinned", icon:"📌", label:"Pinned", fixed:true }];
   CATS.forEach(c => defs.push({ key:c.key, icon:c.icon, label:c.label, group:"cat", rule:c.rule }));
   folderNames().forEach(f => defs.push({ key:"folder:" + f, icon:"📁", label:f, group:"folder" }));
   tabPrefs.custom.forEach(c => defs.push({ key:"custom:" + c.id, icon:"⭐", label:c.name, group:"custom" }));
-  defs.push({ key:"unread", icon:"🔵", label:"Unread", fixed:true }, { key:"done", icon:"☑️", label:"Done", fixed:true });
+  defs.push({ key:"unread", icon:"🔵", label:"Unread", fixed:true }, { key:"done", icon:"☑️", label:"Done", fixed:true }, { key:"snoozed", icon:"💤", label:"Snoozed", fixed:true });
   defs.forEach(d => { d.count = emailsFor(d.key).length; });
   return defs;
 }
 function isTabVisible(d) {
+  if (d.key === "snoozed" || d.key === "pinned") return d.count > 0;   // only shows while something is snoozed
   if (d.fixed) return true;
   if (tabPrefs.hidden.includes(d.key)) return false;
   return d.group === "custom" ? true : d.count > 0;   // categories and folders appear only when you have such emails
 }
+function refreshChips() {
+  byId("sUrgent").textContent  = emailsFor("urgent").length;
+  byId("sFinance").textContent = emailsFor("invoice").length;
+  byId("sUnread").textContent  = emailsFor("unread").length;
+  byId("sSummaries").textContent = allEmails.length;
+}
 function renderTabs() {
+  refreshChips();
   const defs = tabDefs();
   if (!defs.some(d => d.key === currentFilter && isTabVisible(d))) currentFilter = "all";
   byId("filterBar").innerHTML = defs.filter(isTabVisible).map(d =>
@@ -858,12 +963,13 @@ function tabsModalChange(e) {
 }
 
 // ── LIST ──
+function pinnedFirst(list) { return [...list].sort((a, b) => (pins.has(b.id) ? 1 : 0) - (pins.has(a.id) ? 1 : 0)); }   // stable: keeps date order inside each group
 function currentEmails() {
   if (remoteMode) return remoteMode.results;
   if (searchQuery) {
-    return classifiedEmails.filter(e => (senderText(e) + " " + (e.subject || "") + " " + (e.bodyPreview || "")).toLowerCase().includes(searchQuery));
+    return pinnedFirst(classifiedEmails.filter(e => !isSnoozed(e.id) && (senderText(e) + " " + (e.subject || "") + " " + (e.bodyPreview || "")).toLowerCase().includes(searchQuery)));
   }
-  return emailsFor(currentFilter);
+  return pinnedFirst(emailsFor(currentFilter));
 }
 function listLabel() {
   if (remoteMode) return "🔎 Whole-mailbox search";
@@ -877,11 +983,11 @@ function rowHtml(e) {
   const from = e.from?.emailAddress?.name || e.from?.emailAddress?.address || "Unknown";
   const t = new Date(e.receivedDateTime);
   const timeStr = (Date.now() - t) < 86400000 ? t.toLocaleTimeString([], { hour:"numeric", minute:"2-digit" }) : t.toLocaleDateString([], { month:"short", day:"numeric" });
-  const cls = ["row", e.isRead ? "" : "unread", doneEmails.has(e.id) ? "done" : "", e.id === selectedId ? "sel" : ""].filter(Boolean).join(" ");
+  const cls = ["row", e.isRead ? "" : "unread", doneEmails.has(e.id) ? "done" : "", pins.has(e.id) ? "pinned" : "", e.id === selectedId ? "sel" : ""].filter(Boolean).join(" ");
   return `<div class="${cls}" data-id="${esc(e.id)}" role="option" aria-selected="${e.id === selectedId}">
     <div class="dot ${e.urgent ? "red" : (DOT[e.cat] || "")}"></div>
     <div class="row-main">
-      <div class="row-top"><span class="row-from">${esc(from)}</span>${tagsHtml(e)}<span class="row-time">${timeStr}</span></div>
+      <div class="row-top"><span class="row-from">${pins.has(e.id) ? "📌 " : ""}${esc(from)}</span>${tagsHtml(e)}<span class="row-time">${timeStr}</span></div>
       <div class="row-subj">${e.hasAttachments ? "📎 " : ""}${esc(e.subject || "(no subject)")}</div>
       <div class="row-sum">${esc(e.summary)}</div>
     </div></div>`;
@@ -965,7 +1071,18 @@ function renderPreview(e) {
       <div class="pv-actions">
         <button class="btn btn-primary" data-pv="draft">✍️ Draft reply</button>
         <button class="btn btn-ghost" data-pv="done" id="pvDoneBtn">${isDone ? "↩ Undo done" : "✅ Mark done"}</button>
+        <button class="btn btn-ghost" data-pv="pin" id="pvPinBtn">${pins.has(e.id) ? "📌 Unpin" : "📌 Pin"}</button>
+        ${isSnoozed(e.id)
+          ? '<button class="btn btn-ghost" data-pv="wake">⏰ Wake now</button>'
+          : '<button class="btn btn-ghost" data-pv="snooze" aria-expanded="false">💤 Snooze ▾</button>'}
         ${e.webLink ? '<button class="btn btn-ghost" data-pv="outlook">Open in Outlook ↗</button>' : ""}
+      </div>
+      ${isSnoozed(e.id) ? `<div class="pv-snzinfo">💤 Snoozed until <b>${esc(fmtWhen(snoozeMap[e.id]))}</b></div>` : ""}
+      <div class="pv-snooze" id="pvSnooze" hidden>
+        <span>Hide until:</span>
+        <button class="link-btn" data-snooze="3h">In 3 hours</button>
+        <button class="link-btn" data-snooze="tom">Tomorrow 8 AM</button>
+        <button class="link-btn" data-snooze="mon">Monday 8 AM</button>
       </div>
       <div class="pv-note">${esc(e.summary)}</div>
       <div class="pv-why">Sorted into <b>${esc(catLabel(e.cat))}</b> because ${esc(e.why || "")}. <button class="link-btn" data-pv="fix">Sort differently…</button></div>
@@ -1064,6 +1181,8 @@ async function downloadAttachment(msgId, attId, name) {
   }
 }
 function previewClick(evt) {
+  const sz = evt.target.closest("[data-snooze]");
+  if (sz && selectedId) { snoozeEmail(selectedId, sz.dataset.snooze); return; }
   const att = evt.target.closest("[data-att]");
   if (att && selectedId) { downloadAttachment(selectedId, att.dataset.att, att.dataset.name); return; }
   const b = evt.target.closest("[data-pv]");
@@ -1073,6 +1192,9 @@ function previewClick(evt) {
   if (b.dataset.pv === "draft") openDraft(e);
   else if (b.dataset.pv === "done") toggleDone(selectedId);
   else if (b.dataset.pv === "fix") openTabsModal();
+  else if (b.dataset.pv === "pin") togglePin(selectedId);
+  else if (b.dataset.pv === "wake") wakeEmail(selectedId);
+  else if (b.dataset.pv === "snooze") { const m = byId("pvSnooze"); m.hidden = !m.hidden; b.setAttribute("aria-expanded", String(!m.hidden)); }
   else if (b.dataset.pv === "outlook" && e.webLink) window.open(e.webLink, "_blank", "noopener");
 }
 function toggleDone(id) {
@@ -1138,7 +1260,7 @@ function wireUI() {
     if (e.target.closest("#customizeBtn")) openTabsModal();
   });
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") { closeModal(); closeTabsModal(); toggleThemeMenu(false); return; }
+    if (e.key === "Escape") { closeModal(); closeTabsModal(); closeDigest(); toggleThemeMenu(false); return; }
     if ((e.key === "ArrowDown" || e.key === "ArrowUp") && byId("dashboard").style.display !== "none" &&
         !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) &&
         !document.querySelector(".modal-overlay.open")) {
@@ -1153,6 +1275,80 @@ function wireUI() {
   if ([30, 50, 100, 200].includes(c)) emailCount = c;
   byId("countSel").value = String(emailCount);
   renderPreview(null);
+  byId("digestBtn").addEventListener("click", openDigest);
+  byId("dgClose").addEventListener("click", closeDigest);
+  byId("dgPeriod").addEventListener("change", renderDigest);
+  byId("dgHideDone").addEventListener("change", renderDigest);
+  byId("dgPrint").addEventListener("click", printDigest);
+  byId("dgCopy").addEventListener("click", copyDigest);
+  byId("dgMail").addEventListener("click", mailDigest);
+  // snoozed emails come back on their own: check once a minute
+  setInterval(() => {
+    const n = pruneSnoozes();
+    if (n && classifiedEmails.length) { showToast(n + " snoozed email" + (n > 1 ? "s are" : " is") + " back", "⏰"); renderTabs(); renderList(true); }
+  }, 60000);
+}
+
+
+// ── DIGEST (one-page summary you can print, copy or email to yourself) ──
+function digestPeriod() {
+  const v = byId("dgPeriod").value, now = new Date();
+  if (v === "today") { const d = new Date(now); d.setHours(0, 0, 0, 0); return { since: d.getTime(), label: "Today" }; }
+  if (v === "week")  return { since: Date.now() - 7 * 86400000, label: "Last 7 days" };
+  return { since: 0, label: "Everything loaded" };
+}
+function digestData() {
+  const p = digestPeriod(), hideDone = byId("dgHideDone").checked;
+  const list = classifiedEmails
+    .filter(e => !isSnoozed(e.id) && new Date(e.receivedDateTime).getTime() >= p.since && !(hideDone && doneEmails.has(e.id)))
+    .sort((a, b) => new Date(b.receivedDateTime) - new Date(a.receivedDateTime));
+  const attention = list.filter(e => e.urgent || pins.has(e.id));
+  const sections = tabDefs().filter(d => d.group === "cat" || d.group === "custom")
+    .map(d => ({ label: d.icon + " " + d.label, items: list.filter(e => e.cat === d.key) })).filter(s => s.items.length);
+  return { p, list, attention, sections };
+}
+function dgWhen(e) { return new Date(e.receivedDateTime).toLocaleString([], { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); }
+function dgFrom(e) { return e.from?.emailAddress?.name || e.from?.emailAddress?.address || "Unknown"; }
+function dgFlags(e) { return (e.urgent ? "🔴 " : "") + (pins.has(e.id) ? "📌 " : "") + (!e.isRead ? "● unread " : "") + (e.hasAttachments ? "📎" : ""); }
+function digestHtml(d) {
+  const item = e => `<div class="dg-item"><div class="dg-l"><b>${esc(dgFrom(e))}</b> <span class="dg-fl">${esc(dgFlags(e).trim())}</span><br>${esc(e.subject || "(no subject)")}<div class="dg-sum">${esc(e.summary || "")}</div></div><div class="dg-r">${esc(dgWhen(e))}</div></div>`;
+  const unread = d.list.filter(e => !e.isRead).length, att = d.list.filter(e => e.hasAttachments).length;
+  let h = `<div class="dg-title">FinMail digest · ${esc(currentUser.fullName)}</div>
+    <div class="dg-sub">${esc(new Date().toLocaleDateString([], { weekday:"long", month:"long", day:"numeric", year:"numeric" }))} · ${esc(d.p.label)}</div>
+    <div class="dg-stats"><span><b>${d.list.length}</b> emails</span><span><b>${unread}</b> unread</span><span><b>${d.list.filter(e => e.urgent).length}</b> urgent</span><span><b>${att}</b> with attachments</span></div>`;
+  if (!d.list.length) return h + '<p class="dg-empty">No emails in this period.</p>';
+  if (d.attention.length) h += `<div class="dg-sec"><div class="dg-h">⚠️ Needs attention (urgent or pinned) <span>${d.attention.length}</span></div>${d.attention.map(item).join("")}</div>`;
+  d.sections.forEach(s => { h += `<div class="dg-sec"><div class="dg-h">${esc(s.label)} <span>${s.items.length}</span></div>${s.items.map(item).join("")}</div>`; });
+  return h + '<div class="dg-foot">Based on the emails currently loaded in FinMail AI. Sorted by FinMail rules, not by a person; check anything important in Outlook.</div>';
+}
+function digestText(d) {
+  const line = e => `  - ${dgFrom(e)}: ${e.subject || "(no subject)"} (${dgWhen(e)})${dgFlags(e).trim() ? " " + dgFlags(e).trim() : ""}`;
+  let t = `FinMail digest - ${currentUser.fullName}\n${new Date().toLocaleDateString([], { weekday:"long", month:"long", day:"numeric", year:"numeric" })} - ${d.p.label}\n${d.list.length} emails, ${d.list.filter(e => !e.isRead).length} unread, ${d.list.filter(e => e.urgent).length} urgent\n`;
+  if (d.attention.length) t += `\nNEEDS ATTENTION (${d.attention.length})\n` + d.attention.map(line).join("\n") + "\n";
+  d.sections.forEach(s => { t += `\n${s.label.replace(/^\S+\s/, "").toUpperCase()} (${s.items.length})\n` + s.items.map(line).join("\n") + "\n"; });
+  return t;
+}
+function renderDigest() { byId("dgDoc").innerHTML = digestHtml(digestData()); }
+function openDigest() { byId("digestModal").classList.add("open"); renderDigest(); }
+function closeDigest() { byId("digestModal").classList.remove("open"); }
+function printDigest() {
+  document.body.classList.add("printing-digest");
+  const off = () => { document.body.classList.remove("printing-digest"); window.removeEventListener("afterprint", off); };
+  window.addEventListener("afterprint", off);
+  window.print();
+  setTimeout(off, 2000);
+}
+async function copyDigest() {
+  const t = digestText(digestData());
+  try { await navigator.clipboard.writeText(t); showToast("Digest copied. Paste it into an email or Word.", "📋"); }
+  catch (e) { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); showToast("Digest copied", "📋"); } catch (x) {} ta.remove(); }
+}
+function mailDigest() {
+  let t = digestText(digestData());
+  const cut = t.length > 1500;
+  if (cut) t = t.slice(0, 1500).replace(/\n[^\n]*$/, "") + "\n\n[Shortened for email. Use Copy for the full digest.]";
+  window.location.href = "mailto:" + encodeURIComponent(currentUser.email || "") + "?subject=" + encodeURIComponent("FinMail digest - " + byId("dgPeriod").selectedOptions[0].text) + "&body=" + encodeURIComponent(t);
+  if (cut) showToast("Email is shortened. Use Copy for the full digest.", "ℹ️");
 }
 
 // ── DRAFT REPLY ──
@@ -1433,6 +1629,7 @@ async function loadDashboard(soft) {
     renderUserInfo(await userRes.json());
     loadTabPrefs();
     loadDone();
+    loadPins();
 
     const base = "https://graph.microsoft.com/v1.0/me/mailFolders";
     const q = `$top=${emailCount}&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,isRead,bodyPreview,importance,webLink,hasAttachments,toRecipients,ccRecipients`;
